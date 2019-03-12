@@ -2,13 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>34HG</title>
+    <title>MyHouse</title>
   </head>
 
   <body onload="main()">
-    <canvas id="webgl" width="1000" height="900">
-    Please use a browser that supports "canvas"
-    </canvas>
+    <div>
+      <canvas id="webgl" style="background: url('bluesky.jpg'); float:left;" width="1000" height="900">
+      Please use a browser that supports "canvas"
+      </canvas>
+    </div>
+    <div style = "float:left; margin-left: 2%; margin-top: 2%;width:700px;">
+      <h1>WebGL Computer Graphics Assignment</h1>
+      <h2>Description</h2>
+      <p>This is my house in Durham. This has been tested on <b>Linux</b>, therefore would recommend for best results. I have modelled the exterior of the house on the front and the back. The leaves in the plant pots on the front and back, the bird on the railings, the rat on the back garden move by holding down keys. I have also implemented something like a day night cycle which can be cycled through by holding down a key.</p>
+      <p>The reference image that I have used is below (as you can see I have limited the modelling to my own house; not the ones surrounding it): </p>
+      <img src = "34HG.png" style = "height:500px; width: auto; float: left;"></img>
+      <div style = "float:left; margin-left: 2%;">
+        <h2>Controls</h2>
+        <ul>
+          <li>Rotate Camera - Arrow Keys</li>
+          <li>Move Leaves (Wind) - W</li>
+          <li>Move Bird - A</li>
+          <li>Move Bird and Leaves - S</li>
+          <li>Cycle Through Day/Night - D</li>
+          <li>Rat Running - R</li>
+        </ul>
+      </div>
+    </div>
+
 
     <script src="./lib/webgl-utils.js"></script>
     <script src="./lib/webgl-debug.js"></script>
