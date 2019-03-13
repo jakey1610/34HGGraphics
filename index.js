@@ -1,7 +1,3 @@
-// TO-DO LIST
-//  * Animations for day/night cycle
-//  * Add a few more moving objects. Repurpose old???
-
 //************************************************************SHADERS*********************************************************************************************
 // Vertex shader program
 var VSHADER_SOURCE =
@@ -19,9 +15,13 @@ var VSHADER_SOURCE =
   uniform vec3 u_LightDirectionA;
   uniform bool u_isLighting;
   uniform bool u_hasTexture;
+  uniform vec3 u_lightWorldPosition;
+  uniform mat4 u_world;
+  varying vec3 v_surfaceToLight;
   varying vec4 v_Color;
   varying vec2 v_texcoord;
   varying vec3 vLighting;
+  varying vec3 v_normal;
   void main() {
     gl_Position = u_ProjMatrix * u_ViewMatrix * u_ModelMatrix * a_Position;
     v_Color = a_Color;
@@ -45,6 +45,13 @@ var VSHADER_SOURCE =
     if(u_hasTexture){
       v_texcoord = a_texcoord;
     }
+    v_normal = a_Normal.xyz;
+    // compute the world position of the surfoace
+    vec3 surfaceWorldPosition = (u_world * a_Position).xyz;
+
+    // compute the vector of the surface to the light
+    // and pass it to the fragment shader
+    v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
   }`;
 
 // Fragment shader program
@@ -55,14 +62,28 @@ var FSHADER_SOURCE =
   varying vec4 v_Color;
   varying vec2 v_texcoord;
   varying vec3 vLighting;
+  varying vec3 v_surfaceToLight;
+  varying vec3 v_normal;
   uniform sampler2D u_texture;
   uniform bool u_hasTexture;
+  uniform bool u_hasPoint;
   void main() {
+    vec3 normal = normalize(v_normal);
+
+    vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+    float light = dot(v_normal, surfaceToLightDirection);
+
     if(u_hasTexture){
       vec4 texelColor = texture2D(u_texture, v_texcoord);
       gl_FragColor = vec4(texelColor.rgb * vLighting, texelColor.a);
+      if(u_hasPoint){
+        gl_FragColor = vec4(texelColor.rgb * light, texelColor.a);
+      }
     } else {
       gl_FragColor = v_Color;
+      if(u_hasPoint){
+        gl_FragColor.rgb *= light;
+      }
     }
   }`;
 
@@ -115,13 +136,19 @@ function main() {
   var u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
   var u_LightColorA = gl.getUniformLocation(gl.program, 'u_LightColorA');
   var u_LightDirectionA = gl.getUniformLocation(gl.program, 'u_LightDirectionA');
+  var lightWorldPositionLocation = gl.getUniformLocation(gl.program, "u_lightWorldPosition");
+  var worldLocation = gl.getUniformLocation(gl.program, "u_world");
 
 
   // Trigger using lighting or not
   // console.log(!u_ModelMatrix, !u_ViewMatrix, !u_NormalMatrix,
       // !u_ProjMatrix);
+  var u_hasPoint = gl.getUniformLocation(gl.program, 'u_hasPoint');
   var u_isLighting = gl.getUniformLocation(gl.program, 'u_isLighting');
   var u_hasTexture = gl.getUniformLocation(gl.program, 'u_hasTexture');
+
+
+
   if (!u_ModelMatrix || !u_ViewMatrix || !u_NormalMatrix || !u_ProjMatrix){
       // !u_ProjMatrix || !u_LightColor || !u_LightDirection ||
       // !u_isLighting) {
@@ -138,8 +165,10 @@ function main() {
     brightness = 1/2*(Math.cos(light)+0.5)+0.2
     gl.uniform3f(u_LightColorA,brightness,brightness,brightness);
     if (brightness<0.5){
+      // gl.uniform1i(u_hasPoint, true);
       document.getElementById("webgl").style.backgroundImage = "url('nightsky.jpg')";
     } else if (brightness >= 0.5) {
+      // gl.uniform1i(u_hasPoint, false);
       document.getElementById("webgl").style.backgroundImage = "url('bluesky.jpg')";
     }
   }
@@ -155,18 +184,19 @@ function main() {
   // Pass the model, view, and projection matrix to the uniform variable respectively
   gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
   gl.uniformMatrix4fv(u_ProjMatrix, false, projMatrix.elements);
+  gl.uniformMatrix4fv(worldLocation, false, modelMatrix.elements);
 
-
+  //gl.uniform3fv(lightWorldPositionLocation, [0, 4, 0]);
   //See if you can use this in the box function
 
   document.onkeydown = function(ev){
-    keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange);
+    keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange, u_hasPoint);
   };
   setTimeout(async function(){
     await loadTexture(gl, "tex.jpg");
 
     // Draw the scene
-    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture);
+    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint);
   }, 0);
 }
 function loadTexture(gl, url) {
@@ -195,12 +225,12 @@ function isPowerOf2(value) {
 var count = 0;
 var signx = 1;
 var signy = 1;
-function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange) {
+function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange, u_hasPoint) {
   setTimeout(async function(){
     await loadTexture(gl, "tex.jpg");
 
     // Draw the scene
-    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture);
+    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint);
   }, 0);
   switch (ev.keyCode) {
     case 40: // Up arrow key
@@ -1055,7 +1085,7 @@ function popMatrix() { // Retrieve the matrix from the array
   return g_matrixStack.pop();
 }
 
-function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture) {
+function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint) {
 
   //************************************************************MODEL PLANT**************************************************************************************************
   function modelPlant(gl, pos_x, pos_y, pos_z, scale, colorsLeaf, colorsPot, angleBlow){
@@ -2043,6 +2073,63 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture) {
     drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
     modelMatrix = popMatrix();
 
+    //body
+    var n = initVertexBuffersSP(gl, bodyColour, 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the rat body
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((-100 + pos_x + gR_xMove)*scale, (7.5 + pos_y+gR_yMove)*scale, (-0.75 + pos_z)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 9.5, scale * 5.5, scale * 5.5); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //left eye
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the rat eye
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((-92 + pos_x + gR_xMove)*scale, (10 + pos_y+gR_yMove)*scale, (-2 + pos_z)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 1, scale * 1); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //right eye
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the rat eye
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((-92 + pos_x + gR_xMove)*scale, (10 + pos_y+gR_yMove)*scale, (1 + pos_z)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 1, scale * 1); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+
+    //nose
+    var n = initVertexBuffersSP(gl, [0.8,0.4,0.8], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the rat nose
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((-90 + pos_x + gR_xMove)*scale, (7.5 + pos_y+gR_yMove)*scale, (-0.5 + pos_z)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 2, scale * 1, scale * 1); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
     //tail
      var colorsRF = new Float32Array([    // colors
        0.8, 0.4, 0.8,   0.8, 0.4, 0.8,   0.8, 0.4, 0.8,  0.8, 0.4, 0.8, // v0-v1-v2-v3 front
@@ -2064,10 +2151,69 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture) {
     drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
     modelMatrix = popMatrix();
   }
+//*************************************************************************MODEL LAMP******************************************************************************************
+  function modelLamp(gl,pos_x, pos_y, pos_z, scale){
+    // Set the vertex coordinates and color (for the box)
+    var colorsBox = new Float32Array([    // colors
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0, // v0-v1-v2-v3 front
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0, // v0-v3-v4-v5 right
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0, // v0-v5-v6-v1 up
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0, // v1-v6-v7-v2 left
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0, // v7-v4-v3-v2 down
+      0, 0, 0,   0, 0, 0,   0, 0, 0,  0, 0, 0 // v4-v7-v6-v5 back　
+   ]);
+    var n = initVertexBuffersBox(gl, colorsBox, 0.5, 0.25);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the box body
+    pushMatrix(modelMatrix);
+    modelMatrix.translate(pos_x*scale, pos_y*scale, (10+pos_z)*scale);  // Translation
+    modelMatrix.scale(4.0*scale, 5.0*scale, 1.0*scale); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    var colorsLF = new Float32Array([    // colors
+      0.8, 0.8, 0.8,   0.8, 0.8, 0.8,   0.8, 0.8, 0.8,  0.8, 0.8, 0.8, // v0-v1-v2-v3 front
+      0.8, 0.8, 0.8,   0.8, 0.8, 0.8,   0.8, 0.8, 0.8, // v0-v3-v4 right
+      0.8, 0.8, 0.8,   0.8, 0.8, 0.8,   0.8, 0.8, 0.8, // v1-v5-v2 left
+      0.8, 0.8, 0.8,   0.8, 0.8, 0.8,   0.8, 0.8, 0.8,  0.8, 0.8, 0.8, // v1-v4-v3-v2 down
+      0.8, 0.8, 0.8,   0.8, 0.8, 0.8,   0.8, 0.8, 0.8,  0.8, 0.8, 0.8 // v4-v1-v0-v5 back　
+   ]);
+    var n = initVertexBuffersHP(gl, colorsLF,0.25,0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the lamp side
+    pushMatrix(modelMatrix);
+    modelMatrix.translate(pos_x*scale, (1.25+pos_y)*scale, (11.5+pos_z)*scale);  // Translation
+    modelMatrix.scale(4*scale, 2.5*scale, -2*scale); // Scale
+
+
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //bulb
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((pos_x)*scale, (pos_y-0.9)*scale, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 0.5, scale * 0.75, scale * 0.5); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+  }
 //*************************************************************************MODEL HOUSE******************************************************************************************
   function modelHouse(gl){
     gl.uniform1i(u_isLighting, false);
-      gl.uniform1i(u_hasTexture, true);
+    gl.uniform1i(u_hasTexture, true);
+
      // Set the vertex coordinates and color (for the house)
      var colorsHouse = new Float32Array([    // colors
        0.54, 0.3098, 0.2235,   0.54, 0.3098, 0.2235,   0.54, 0.3098, 0.2235,  0.54, 0.3098, 0.2235, // v0-v1-v2-v3 front
@@ -2198,9 +2344,8 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture) {
      0.322,0.42,0.176,   0.322,0.42,0.176,   0.322,0.42,0.176,  0.322,0.42,0.176, // v1-v4-v3-v2 down
      0.322,0.42,0.176,   0.322,0.42,0.176,   0.322,0.42,0.176,  0.322,0.42,0.176 // v4-v1-v0-v5 back　
   ]);
+ // gl.uniform1i(u_hasPoint, true);
 
-  //To-do list
-  // * Learn how to add a light source
  modelHouse(gl);
  let texture = async function(){
    return await loadTexture(gl, 'tex.jpg');
@@ -2213,6 +2358,8 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture) {
  modelBird(gl,17,-97,303,0.1, [0.6,0.6,0.6], [0.4,0.4,0.4]);
 
  modelRat(gl,17,-165,-40,0.1, [0,0,0]);
+
+ modelLamp(gl,0,0,0,1)
 
 }
 function drawbox(gl, u_ModelMatrix, u_NormalMatrix, n) {
