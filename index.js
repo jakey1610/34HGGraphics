@@ -95,11 +95,18 @@ var g_normalMatrix = new Matrix4();  // Coordinate transformation matrix for nor
 var ANGLE_STEP = 5.0;  // The increments of rotation angle (degrees)
 var g_xAngle = 0.0;    // The rotation x angle (degrees)
 var g_yAngle = 0.0;    // The rotation y angle (degrees)
+var g_xMove = 0.0;
+var g_yMove = 10.0;
+var g_zMove = 100.0;
 var gO_xAngle = 0.0;
 var gO_xMove = 0.0;
 var gO_yMove = 0.0;
 var gR_xMove = 0.0;
 var gR_yMove = 0.0;
+var gS_xMove = 0.0;
+var gS_yMove = 0.0;
+var smoke = false;
+var focus = false;
 var time = 0;
 function main() {
   // Retrieve <canvas> element
@@ -119,7 +126,6 @@ function main() {
   }
 
 
-  //*********************************************CHECK THIS OUT***********************************************************************
   gl.clearColor(time/360, time/360, time/360, time/360);
   gl.enable(gl.DEPTH_TEST);
   //gl.enable(gl.CULL_FACE);
@@ -190,13 +196,16 @@ function main() {
   //See if you can use this in the box function
 
   document.onkeydown = function(ev){
-    keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange, u_hasPoint);
+    keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange, u_hasPoint, u_ViewMatrix);
   };
   setTimeout(async function(){
-    await loadTexture(gl, "tex.jpg");
-
     // Draw the scene
-    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint);
+    var drawFun = async function(){
+      await loadTexture(gl, "tex.jpg");
+      draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint, u_ViewMatrix);
+      requestAnimationFrame(drawFun);
+    };
+    drawFun();
   }, 0);
 }
 function loadTexture(gl, url) {
@@ -225,12 +234,14 @@ function isPowerOf2(value) {
 var count = 0;
 var signx = 1;
 var signy = 1;
+var signSx = 1;
+var signSy = 1;
 function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, lightDirChange, u_hasPoint) {
   setTimeout(async function(){
     await loadTexture(gl, "tex.jpg");
 
     // Draw the scene
-    draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint);
+    // draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint);
   }, 0);
   switch (ev.keyCode) {
     case 40: // Up arrow key
@@ -245,12 +256,12 @@ function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTextu
     case 37: // Left arrow key
       g_yAngle = (g_yAngle - ANGLE_STEP) % 360;
       break;
-    case 87: //W key
+    case 70: //F key
       count += 0.25;
       sine = Math.sin(count);
       gO_xAngle+=sine*2;
       break;
-    case 65: //A key
+    case 84: //T key
       if (Math.abs(gO_yMove)%2 <= 1 && Math.abs(gO_yMove) > 1){
         signy *= -1;
       }
@@ -260,7 +271,7 @@ function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTextu
       gO_xMove += signx*0.2;
       gO_yMove += signy*0.2;
       break;
-    case 83: //S key
+    case 71: //G key
       count += 0.25;
       sine = Math.sin(count);
       gO_xAngle+=sine*2;
@@ -273,7 +284,7 @@ function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTextu
       gO_xMove += signx*0.2;
       gO_yMove += signy*0.2;
       break;
-    case 68:
+    case 89: //Y key
       time = (time + 0.05) % 360;
       var sine = Math.sin(time);
       var cosine = Math.cos(time)
@@ -284,6 +295,37 @@ function keydown(ev, gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTextu
       break;
     case 82:
       gR_xMove = ((gR_xMove)+2)%200
+      break;
+    case 87: //W key
+      g_zMove -= 1;
+      break;
+    case 65: //A key
+      g_xMove -= 1;
+      break;
+    case 83: //S key
+      g_zMove += 1;
+      break;
+    case 68: //D key
+      g_xMove += 1;
+      break;
+    case 85:
+      g_yMove += 1;
+      break;
+    case 74:
+      g_yMove -= 1;
+      break;
+    case 72:
+      focus = !focus;
+      break;
+    case 67: //c key
+      smoke = !smoke;
+      break;
+    case 86://v key
+      if (Math.abs(gS_xMove)%2 <= 1 && Math.abs(gS_xMove)%2 > 1){
+        signSx *= -1;
+      }
+      gS_xMove += signSx*0.05;
+      gS_yMove += signSy*0.05;
       break;
     default: return; // Skip drawing at no effective action
   }
@@ -881,9 +923,9 @@ function initVertexBuffersHP(gl, colorsP, uB, lB) {
    0.0,  uB,
    // Front
    0.0,  uB,
-   1.0,  uB,
    1.0,  lB,
    0.0,  lB,
+   1.0,  uB,
  ]);
 
 
@@ -1085,7 +1127,14 @@ function popMatrix() { // Retrieve the matrix from the array
   return g_matrixStack.pop();
 }
 
-function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint) {
+function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_hasPoint, u_ViewMatrix) {
+  if(focus){
+    viewMatrix.setLookAt(g_xMove, g_yMove, g_zMove, 0, 0, 0, 0, 1, 0);
+    gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
+  } else {
+    viewMatrix.setLookAt(g_xMove, g_yMove, g_zMove, g_xMove, g_yMove-10, g_zMove-100, 0, 1, 0);
+    gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
+  }
 
   //************************************************************MODEL PLANT**************************************************************************************************
   function modelPlant(gl, pos_x, pos_y, pos_z, scale, colorsLeaf, colorsPot, angleBlow){
@@ -1893,6 +1942,43 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_h
         modelMatrix.scale(3*scale, 10*scale, 5*scale); // Scale
         drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
         modelMatrix = popMatrix();
+        gl.uniform1i(u_hasTexture, false);
+        var colorsPot = [0.2,0.2,0.2];
+        //draw the chimney pot
+        var n = initVertexBuffersCyl(gl, colorsPot[0],colorsPot[1],colorsPot[2]);
+        if (n < 0) {
+          console.log('Failed to set the vertex information');
+          return;
+        }
+
+        // Model the cylinder
+        pushMatrix(modelMatrix);
+
+
+        modelMatrix.translate((pos_x-8)*scale,(6+pos_y)*scale,(-2+pos_z)*scale);  // Translation
+        modelMatrix.rotate(90,1,0,0);
+        modelMatrix.scale(0.5*scale,0.5*scale,1*scale); // Scale
+
+        drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+        modelMatrix = popMatrix();
+
+        //draw the second chimney pot
+        var n = initVertexBuffersCyl(gl, colorsPot[0],colorsPot[1],colorsPot[2]);
+        if (n < 0) {
+          console.log('Failed to set the vertex information');
+          return;
+        }
+
+        // Model the cylinder
+        pushMatrix(modelMatrix);
+
+
+        modelMatrix.translate((pos_x-8)*scale,(6+pos_y)*scale,(-4+pos_z)*scale);  // Translation
+        modelMatrix.rotate(90,1,0,0);
+        modelMatrix.scale(0.5*scale,0.5*scale,1*scale); // Scale
+
+        drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+        modelMatrix = popMatrix();
 
       }
     }
@@ -2209,6 +2295,78 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_h
     drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
     modelMatrix = popMatrix();
   }
+  //*************************************************************************MODEL SMOKE******************************************************************************
+  function modelSmoke(gl,pos_x, pos_y, pos_z, scale, cx, cy){
+    //Smoke Particle 1
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((((pos_x+1+gS_xMove)*scale)%2*scale)+cx, (((pos_y+7+gS_xMove)*scale)%10*scale)+cy, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 2, scale * 1); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //Smoke Particle 2
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((((pos_x-0.5+gS_xMove)*scale)%2*scale)+cx, (((pos_y+5.5+gS_xMove)*scale)%10*scale)+cy, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 1.6, scale * 1.2); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //Smoke Particle 3
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((((pos_x+1+gS_xMove)*scale)%2*scale)+cx, (((pos_y+3+gS_xMove)*scale)%10*scale)+cy, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 1.5, scale * 1.5); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //Smoke Particle 4
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((((pos_x-0.5+gS_xMove)*scale)%2*scale)+cx, (((pos_y+2+gS_xMove)*scale)%10*scale)+cy, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1, scale * 1.25, scale * 0.5); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+
+    //Smoke Particle 5
+    var n = initVertexBuffersSP(gl, [0.5,0.5,0.5], 0);
+    if (n < 0) {
+      console.log('Failed to set the vertex information');
+      return;
+    }
+    // Model the bulb
+    pushMatrix(modelMatrix);
+    modelMatrix.translate((((pos_x+gS_xMove)*scale)%2*scale)+cx, (((pos_y+gS_xMove)*scale)%10*scale)+cy, (pos_z+12)*scale);  // Translation
+    //modelMatrix.rotate(45,0,1,0);
+    modelMatrix.scale(scale * 1.25, scale * 2, scale * 0.75); // Scale
+    drawbox(gl, u_ModelMatrix, u_NormalMatrix, n);
+    modelMatrix = popMatrix();
+  }
 //*************************************************************************MODEL HOUSE******************************************************************************************
   function modelHouse(gl){
     gl.uniform1i(u_isLighting, false);
@@ -2358,8 +2516,10 @@ function draw(gl, u_ModelMatrix, u_NormalMatrix, u_isLighting, u_hasTexture, u_h
  modelBird(gl,17,-97,303,0.1, [0.6,0.6,0.6], [0.4,0.4,0.4]);
 
  modelRat(gl,17,-165,-40,0.1, [0,0,0]);
-
- modelLamp(gl,0,0,0,1)
+ if(smoke){
+   modelSmoke(gl, 15, 40, 1.5, 1, -9, 30);
+ }
+ // modelLamp(gl,0,0,0,1)
 
 }
 function drawbox(gl, u_ModelMatrix, u_NormalMatrix, n) {
